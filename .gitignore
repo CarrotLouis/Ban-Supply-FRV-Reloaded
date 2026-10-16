@@ -1,4 +1,11 @@
 build/
+outputs/
+.venv/
+.env
+.env.*
+*.log
+*.dmp
+*.zip
 __pycache__/
 *.pyc
 *.hd2snap

@@ -1,5 +1,5 @@
-local VERSION='0.1.1'
-local BUILD='0.1.1-vanilla-lease.1'
+local VERSION='0.2.0'
+local BUILD='0.2.0-callin.1'
 local KEY='BanSupplyFRVReloaded'
 if rawget(_G,KEY) then return rawget(_G,KEY) end
 local api={version=VERSION,build=BUILD,enabled=true,status='waiting for ModOptionsMenu',steam_build=profile.steam_build}
@@ -42,7 +42,7 @@ local function initialize()
     local game=assert(memory.module('game.dll'),'game module not loaded')
     reader=reader_module.new(memory,game,profile)
     controller=policy_module.new(native_module.new(memory,game,profile,reader),log)
-    initialized=true;status('ready; waiting for a Supply FRV driver')
+    initialized=true;status('ready; waiting for a Supply FRV call-in or driver')
 end
 local function step(dt)
     elapsed=elapsed+math.max(0,math.min(tonumber(dt) or 0,0.25))
@@ -74,7 +74,7 @@ return api
 
 --[===[Ban Supply FRV Reloaded - quick guide
 
-Ban Supply FRV Reloaded 0.1.1 (test build; vanilla ownership recovery)
+Ban Supply FRV Reloaded 0.2.0 (test build; call-in activation)
 
 依赖 / Requirements
 - Bingus Shared Loader v18 或更新版本 / v18 or newer
@@ -90,7 +90,10 @@ Ban Supply FRV Reloaded 0.1.1 (test build; vanilla ownership recovery)
 3. 开关默认开启。修改后按 APPLY（键盘通常是 Tab）应用。
 
 效果
-开启后，由你驾驶并取得控制权的 M-103 补给 FRV，其左右两侧为车载机枪补给的交互将被禁用。
+开启后，你呼叫的 M-103 补给 FRV 在生成并可交互时即禁用左右两侧车载机枪补给，无需上车。
+仍保留原有触发方式：你驾驶并取得控制权的其他补给 FRV 也会生效。
+仅根据本次投放的呼叫者与实际货物实体关联识别；队友呼叫的车、地图原有车不会因此自动生效。
+开关在运输投放开始时记录；车外关闭不撤销已启动投放或已生效车辆。关闭后驾驶该车可以恢复。
 采用禁用交互方式；游戏可能仍显示灰色提示。上车、取补给和自动机枪本身不受本模组修改。
 效果记在每辆车上：下车、乘坐其他座位、死亡和驾驶另一辆车都不会主动撤销原车效果。
 没有开启本功能的新驾驶员接管时，由原版游戏恢复交互；未安装模组的队友也适用。
@@ -100,7 +103,10 @@ Ban Supply FRV Reloaded 0.1.1 (test build; vanilla ownership recovery)
 Usage
 Import this ZIP in HD2Arsenal, enable it and its two requirements, deploy, then restart the game.
 Open ESC > MODS > Ban Supply FRV Reloaded. The single toggle defaults to ON; press APPLY to commit edits.
-Driving and controlling an M-103 Supply FRV disables only its two mounted-gun resupply interactions.
+Calling an M-103 Supply FRV while enabled protects it as soon as its cargo entity and interactions are ready.
+No driver is required. Driving and controlling another Supply FRV still activates protection as before.
+The native delivery links its caller and exact cargo. Teammate deliveries and map vehicles are not auto-protected.
+The applied toggle is sampled when native transport delivery starts. OFF on foot does not cancel a started delivery.
 Grey prompts may remain. Seat entry, supply pickups and the automatic gun are unchanged.
 The vehicle retains the effect when empty, after your death, and while you drive another vehicle.
 A new controller without this feature restores resupply through vanilla game logic, including unmodded teammates.
@@ -109,12 +115,10 @@ OFF restores the vehicle you currently drive. Turning OFF while on foot leaves p
 until someone controls them again.
 
 验证与日志 / Validation and logs
-0.1.0 的交接恢复已被实测报告和日志确认有缺陷。本版已更换恢复机制。
-离线原生指令测试已验证：空车保持禁用，完全错过 Lua 交接观察时，原版新控制者也能恢复两侧。
-0.1.1 尚未完成游戏内联机实测；需要确认主机、客机以及未安装模组的新驾驶员。
-The reported 0.1.0 migration defect is fixed in code using vanilla delayed-enable recovery.
-Captured native instructions verify persistence and recovery without ANY Lua on the new owner.
-This is offline instruction emulation; actual game execution and network delivery remain unverified for 0.1.1.
+本版已完成呼叫归属、无需驾驶、死亡复活、客机玩家槽位、交接恢复和安装包的离线检查。
+原生指令仿真验证了投放关联、新触发与原版接管恢复；尚未完成 0.2.0 游戏内联机实测。
+Actual addon Lua and captured native instructions verify delivery links, activation without a driver and takeover recovery.
+This is offline verification. Live host/guest call-in behavior and actual network delivery remain pending for 0.2.0.
 
 日志 / Log:
 %LOCALAPPDATA%/CowboyBingus/Helldivers2/Logs/BanSupplyFRVReloaded.log

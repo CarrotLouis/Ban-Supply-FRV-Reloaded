@@ -25,7 +25,8 @@ function M.new(memory,game,profile,reader,call,notify)
         assert(bytes and #bytes==spec.length and fingerprint(bytes)==spec.fingerprint,
                'native interaction function changed: '..name)
     end
-    for _,name in ipairs({'set_zone','queue_change','timer_update','receive_flags','initialize_zones'}) do
+    for _,name in ipairs({'set_zone','queue_change','timer_update','receive_flags','initialize_zones',
+                          'delivery_caller','transport_caller','cargo_entity'}) do
         assert(profile.functions[name],'missing native interaction proof: '..name)
     end
     assert(type(memory.write)=='function','checked interaction writer unavailable')

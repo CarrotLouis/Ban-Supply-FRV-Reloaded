@@ -30,6 +30,7 @@ class Peer:
         self.state=self.states+self.index*0x370
         self.stop,self.stack,self.payload=0x71000000,0x70002000,0x72000000
         for at,n in [(self.base+0x977000,0x2000),(self.base+0x980000,0x1000),
+                     (self.base+0x6ac000,0x1000),(self.base+0x6d9000,0x1000),
                      (self.base+0xfd9000,0x1000),(self.base+0x3483000,0x1000),
                      (self.manager,0x15000),(self.rows,0x1000),(self.records,0x1000),
                      (self.flags,0x1000),(self.record,0x1000),(self.states,0x2000),
@@ -140,6 +141,7 @@ class Peer:
                 function(manager,id,zone,enabled)py_setter(num(manager),id,zone,enabled)end,
                 function(unit,prop,at)py_notify(unit,prop,num(at))end)
             vehicle={id=548,key='mission/same-generation',network_unit=111}
+            controller=require('policy').new(action)
         ''')
     def addon_apply(self,enabled):
         result=self.lua.eval(b'function(enabled)return action:apply(vehicle,enabled)end')(enabled)
@@ -147,6 +149,17 @@ class Peer:
     def addon_release(self):
         result=self.lua.eval(b'function()return action:release_local(vehicle)end')()
         assert result[0] is True,repr(result)
+    def addon_callin_step(self,has_cargo):
+        self.lua.eval(b'''function(has_cargo)
+            vehicle.owned=require('reader').u32(py_read(record+20,4),0)==1
+            local snapshot={active=true,context='mission',vehicles={},deliveries={}}
+            if has_cargo~=nil then
+                snapshot.deliveries.call={key='call',caller=79,cargo=has_cargo and vehicle.id or nil}
+                if has_cargo then snapshot.vehicles[vehicle.id]=vehicle end
+            end
+            controller:step(snapshot,true)
+            assert(not controller.held,controller.held)
+        end''')(has_cargo)
 
 def main(argv=None):
     parser=argparse.ArgumentParser(description=__doc__)
@@ -172,6 +185,34 @@ def main(argv=None):
         assert raw==default,'retained FRV StartEnabledDelay must be -1'
         initializer.initialize_timer(z,raw)
     passed('actual native timer initialization copies local StartEnabledDelay=-1')
+
+    # Execute the native caller/cargo-copy blocks independently of Lua fixtures.
+    from unicorn.x86_const import UC_X86_REG_RSI,UC_X86_REG_R15,UC_X86_REG_R12
+    context,element=initializer.payload+0x200,initializer.payload+0x800
+    initializer.put32(context+0x3a4,79)
+    initializer.u.reg_write(UC_X86_REG_RSI,context)
+    initializer.u.emu_start(initializer.base+0x6ac025,initializer.base+0x6ac031,count=2)
+    assert initializer.get32(context+0x3e8)==79
+    initializer.u.reg_write(UC_X86_REG_R15,context)
+    initializer.u.reg_write(UC_X86_REG_RSI,element)
+    initializer.u.emu_start(initializer.base+0x6d98e5,initializer.base+0x6d98ff,count=3)
+    assert initializer.get32(element+0x18)==79
+    initializer.u.reg_write(UC_X86_REG_R12,element)
+    initializer.u.reg_write(UC_X86_REG_RSI,548)
+    initializer.u.emu_start(initializer.base+0x6d9326,initializer.base+0x6d9330,count=2)
+    assert initializer.get32(element+8)==548
+    passed('actual native delivery copies caller AVATAR and exact spawned cargo entity into transport element')
+
+    called=Peer(code,specs,True);called.receive(struct.pack('<IIII',127,0,0,0))
+    called.install_addon();called.addon_callin_step(None);called.addon_callin_step(False)
+    assert called.mask()==127 and called.delayed()==0
+    called.addon_callin_step(True)
+    assert called.mask()==31 and called.delayed()==96 and called.timers()==[held,held]
+    passed('actual policy and addon protect called cargo immediately with NO driver ever assigned')
+    takeover=Peer(code,specs);takeover.receive(called.blob())
+    called.owned(False);takeover.owned(True);takeover.frame()
+    assert takeover.lua is None and takeover.mask()==127 and takeover.delayed()==0
+    passed('call-in-origin protection still recovers under native unmodded-driver takeover')
 
     # Negative control: reproduce v0.1.0's permanent inherited disabled mask.
     legacy=Peer(code,specs,True);legacy.receive(struct.pack('<IIII',31,0,0,0));legacy.frame()

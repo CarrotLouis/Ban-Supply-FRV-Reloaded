@@ -12,7 +12,7 @@ function M.new(log)
                 type='toggle',default=true,mod='Ban Supply FRV Reloaded',
                 mod_id='carrotlouis.ban_supply_frv_reloaded',
                 label='Ban Supply FRV Reload',
-                description='While enabled, driving a Supply FRV disables its two gun resupply interactions. '
+                description='While enabled, calling a Supply FRV protects it on delivery without driving. Driving one also disables its two gun resupply interactions. '
                     ..'The effect stays after you leave. A new driver without this feature, including an unmodded teammate, restores resupply. '
                     ..'With this option OFF, drive the vehicle again to restore gun resupply.'})
             self.registered=ok and accepted==true

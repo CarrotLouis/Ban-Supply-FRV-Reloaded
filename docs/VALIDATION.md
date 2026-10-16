@@ -1,7 +1,40 @@
 # Validation and acceptance boundary
 
-Date: 2026-10-14 (Asia/Shanghai). Candidate: **0.1.1-vanilla-lease.1**.
+Date: 2026-10-17 (Asia/Shanghai). Candidate: **0.2.0-callin.1**.
 No game launch or live-manager change was made for this fix.
+
+## 0.2.0 call-in activation
+
+The added trigger observes the vanilla transport component at `game+3326518`.
+Only its owned prefix (+0x10) has the local 0x40-byte state at +0x40; remote
+copies must not be read through that local-state array. A transport's resource
+must be `75be82ed8592a6b3`, its cargo resource must be the exact M-103 resource,
+and the cargo entity from state +8 must independently resolve as that vehicle.
+
+The caller member is an **avatar entity ID** at transport state +0x18. It is
+not a Player entity, a roster index or the transport's present network owner.
+The dispatcher copies spawn-context +0x3A4 to +0x3E8 (`+6AC025` / `+6AC02B`),
+transport creation copies it into +0x18 (`+6D98E5` / `+6D98FC`), and actual cargo
+creation records its returned entity ID into +8 (`+6D9326`). Native +606520 maps
+an avatar to its Player by resolving each roster slot's avatar network ID, also
+confirming that the two entity classes must not be conflated.
+
+The reader matches the full local session peer at `user+B398` to roster peers
+at `player+2C8+slot*38`, then resolves that slot's avatar at +3A8+slot*20.
+It keeps only full generational avatar IDs already proven local in the same
+scene/peer. This lets a call finish after death or respawn without attributing
+an unrelated actor's vehicle to the caller. History is committed only after
+the complete read guards pass, and cleared on scene/session changes.
+
+Each native transport snapshots the applied toggle when first observed before
+its cargo is ready. A delivery is consumed once after successful activation;
+its metadata cannot reapply the ban after an inactive new driver restores it.
+An initial snapshot of already-delivered cargo is a baseline, not a new call.
+An OFF call is not replayed by turning ON later, while an ON-started transport
+retains its eligibility if the caller turns OFF on foot during delivery.
+No shared definition, spawn request or owner is modified. The first consistent
+10-Hz observation where cargo and interactions are ready applies protection;
+there is no seat-entry prerequisite. Live delivery latency remains unmeasured.
 
 ## Confirmed defect in 0.1.0
 
@@ -63,8 +96,8 @@ The retained Steam-25480438 capture and the currently installed files match:
 - EXE SHA256: `F5FEE03DCFDB2E553A4752C283590950AC13316B376D8196AA556FF0400D5F06`
 - game.dll SHA256: `2E2C3B7C2500646DADD5F2B4C6E0504DBB7E7896139F64CDDC0D1813C718F51E`
 
-Both hashes gate runtime initialization. Five native fingerprints are also
-checked before any action: setter `+978610`, property queue `+FD97E0`, timer
+Both hashes gate runtime initialization. Eight native fingerprints are also
+checked before any action: three caller/cargo copy regions above, setter `+978610`, property queue `+FD97E0`, timer
 update `+977FA0`, flags receiver `+980020`, and initializer `+977650`.
 The setter ABI is `(manager*, entity_id u32, zone u32, enabled uint8)`.
 The property queue takes `(network_unit u32, property u32, field_pointer*)`.
@@ -81,8 +114,8 @@ raw game definitions are externally supplied evidence and are never exported.
 
 ## Offline results
 
-80 explicit LuaJIT checks pass: menu 6, native boundary 31, policy 27 and guarded
-reader 16. They cover per-car persistence, OFF while parked, unobserved control
+123 explicit LuaJIT checks pass: menu 6, native boundary 31, policy 27, call-in
+policy 24 and guarded reader 35. They cover per-car persistence, OFF while parked, unobserved control
 transfer, inherited OFF restoration, remote-ON ownership, repeated acquisition,
 network-ID changes, generation replacement, relocated timers, unknown layouts,
 write failures, unrelated flags and fingerprint mismatch. Real Win32 tests also
@@ -91,9 +124,12 @@ including rejection of module-image writes and file SHA256.
 
 `tests/verify_native_lease.py` executes actual addon Lua on LuaJIT 2.1 against
 separate Unicorn peer memory, invoking actual captured setter, receiver and
-timer-update instructions. Its 13 cases include:
+timer-update instructions. Its 16 cases include:
 
 - Actual native timer initialization and the legacy failure negative control.
+- Actual native caller-avatar and cargo-entity copy instructions, protection
+  without any driver through actual policy/Lua, and native unmodded recovery
+  of a vehicle originally protected by the call-in trigger.
 - 2400 native frames of protection without refresh writes or notifications.
 - Received flags preserve the unmodded peer's local timers; unowned peers wait.
 - An unmodded new owner restores both zones with **zero Lua on either side of
@@ -124,13 +160,16 @@ evidence, not a claim that the user-facing manager UI was exercised.
 
 ## Remaining live acceptance
 
-0.1.1 is a test candidate. Live native execution, MODS rendering for this addon,
+0.2.0 is a test candidate. Live native execution, MODS rendering for this addon,
 real delivery to teammates, post-exit/death persistence, and normal driver
 migration as both host and guest require actual game verification. Disabled
 grey prompts may remain; removal of UI hints for unmodded peers is not provided.
 Host migration or authority changes without a new driver were not tested.
 
-Minimum sequence: ON driver protects A; leave A empty; an unmodded teammate
+Minimum sequence: ON caller requests A and BOTH gun-resupply zones are blocked
+before anyone enters; an unmodded teammate's call and a map car stay untouched.
+Repeat as host and guest, with two simultaneous calls and death during flight.
+Then an ON driver protects A; leave A empty; an unmodded teammate
 drives A and BOTH sides become usable; repeat with an installed-but-OFF driver;
 then an ON driver takes over and both sides become blocked again. Repeat as
 guest/host and with two cars, passenger/gunner entry, death, OFF on foot,

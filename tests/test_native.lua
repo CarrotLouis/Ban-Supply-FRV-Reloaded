@@ -12,7 +12,8 @@ local function fixture()
     local code='test native boundary';ffi.copy(game,code,#code)
     local profile={reload_zones={5,6},reload_mask=0x60,held_timer=actual.held_timer,
                    default_timer=actual.default_timer,delayed_property=actual.delayed_property,functions={}}
-    for _,name in ipairs({'set_zone','queue_change','timer_update','receive_flags','initialize_zones'}) do
+    for _,name in ipairs({'set_zone','queue_change','timer_update','receive_flags','initialize_zones',
+                          'delivery_caller','transport_caller','cargo_entity'}) do
         profile.functions[name]={rva=0,length=#code,fingerprint=Native.fingerprint(code)}
     end
     local state={manager=ffi.cast('uint8_t *',game),flags=flags,clocks=clocks,

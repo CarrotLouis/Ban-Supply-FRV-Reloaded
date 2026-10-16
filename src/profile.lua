@@ -5,6 +5,7 @@ return {
     exe_sha256 = 'F5FEE03DCFDB2E553A4752C283590950AC13316B376D8196AA556FF0400D5F06',
     game_sha256 = '2E2C3B7C2500646DADD5F2B4C6E0504DBB7E7896139F64CDDC0D1813C718F51E',
     vehicle_resource = '9b2140378640432e',
+    transport_resource = '75be82ed8592a6b3',
     avatar_resource = '4d1c334d294dfa97',
     transition = 27,
     reload_type = 21,
@@ -18,7 +19,7 @@ return {
     zone_types = {19, 19, 9, 19, 19, 21, 21},
     globals = {mission=0x33266a0, player=0x3326468, entities=0x346bf98,
                avatar=0x3326d20, seater=0x3326d78, collection=0x3326d88,
-               interactable=0x3326d68},
+               interactable=0x3326d68, transport=0x3326518, user=0x347cef0},
     entity_map = 0xf22ec8,
     entity_records = 0xf32f18,
     functions = {}, -- filled by the reproducible profile generator

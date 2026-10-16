@@ -28,7 +28,7 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--validate-only',action='store_true')
     parser.add_argument('--loader',type=Path,default=Path(os.environ.get('BINGUS_SHARED_LOADER',ROOT.parent/'BingusSharedLoader')))
-    parser.add_argument('--output',type=Path,default=ROOT.parents[1]/'outputs'/f'Ban-Supply-FRV-Reloaded-{VERSION}-test.zip')
+    parser.add_argument('--output',type=Path,default=ROOT/'outputs'/f'Ban-Supply-FRV-Reloaded-{VERSION}-test.zip')
     parser.add_argument('--source-bundle',action='store_true')
     parser.add_argument('--native-capture',type=Path,help='retained capture for native recovery gate; never packaged')
     parser.add_argument('--frv-definition',type=Path,help='retained raw component for native timer initialization proof')
@@ -67,7 +67,7 @@ def main():
     build_addon(RESOURCE,source,GUID,base,DISPLAY)
     with zipfile.ZipFile(base) as z: files={n:z.read(n) for n in z.namelist()}
     manifest=json.loads(files['manifest.json'])
-    description=('Disables the two mounted-gun resupply interactions on M-103 Supply FRVs you drive. '
+    description=('Disables the two mounted-gun resupply interactions on M-103 Supply FRVs you call in or drive. '
                  'Inactive new drivers, including unmodded teammates, restore resupply through vanilla logic. '
                  'Single default-ON toggle in Mod Options Menu. Requires Bingus Shared Loader and Mod Options Menu. '
                  'Version '+version+' test candidate; Steam build 25480438.')
@@ -104,7 +104,11 @@ def main():
         source_output=args.output.parent/f'Ban-Supply-FRV-Reloaded-{version}-source.zip'
         with zipfile.ZipFile(source_output,'w',zipfile.ZIP_DEFLATED) as z:
             for path in sorted(ROOT.rglob('*')):
-                if path.is_file() and not any(p in {'.git','build','__pycache__'} for p in path.relative_to(ROOT).parts):
+                rel=path.relative_to(ROOT)
+                allowed=rel.parts[0] in {'src','tests','scripts','docs','.github'} or (
+                    len(rel.parts)==1 and path.name in {'README.md','AGENTS.md','CONTRIBUTING.md','CHANGELOG.md',
+                    'LICENSE','THIRD_PARTY_NOTICES.md','requirements-dev.txt','vendor-lock.json','.gitignore','.gitattributes','.editorconfig'})
+                if path.is_file() and allowed and '__pycache__' not in rel.parts:
                     z.write(path,'Ban-Supply-FRV-Reloaded/'+path.relative_to(ROOT).as_posix())
         print('SOURCE',source_output)
 

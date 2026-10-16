@@ -22,6 +22,7 @@ M.u32, M.entity = u32, entity
 
 function M.new(memory, game, profile)
     local self = {}
+    local actor_context,actor_peer,actor_ids=nil,nil,{}
     local reads, guards
     local function read(at, size)
         reads = reads+1
@@ -71,20 +72,75 @@ function M.new(memory, game, profile)
                 records=pointer(keep(base+0x38,8)), states=pointer(keep(base+0x48,8))}
     end
 
+    -- A vanilla vehicle delivery carries its caller's AVATAR entity, separately
+    -- from its Player and from the transport's current network owner. Its cargo
+    -- member is the exact entity returned by the native cargo creation path.
+    local function deliveries(context,ids,known_actors,local_peer)
+        local transport=global('transport')
+        local counts=keep(transport+8,12)
+        local capacity,active,owned=u32(counts,0),u32(counts,4),u32(counts,8)
+        assert(capacity<=256 and active<=capacity and owned<=active,'invalid transport counts')
+        -- +0x40 holds LOCAL transport state; only the owned prefix has it.
+        -- In a guest session remote transports can exist with no such array.
+        if owned==0 or not local_peer then return {} end
+        local raw=keep(pointer(keep(transport+0x40,8)),owned*0x40)
+        local matches={}
+        for index=0,owned-1 do
+            local row=raw:sub(index*0x40+1,index*0x40+0x40)
+            if hash(row:sub(1,8))==profile.vehicle_resource then matches[#matches+1]={index=index,row=row} end
+        end
+        if #matches==0 then return {} end
+        local records=pointer(keep(transport+0x38,8))
+        local out,claimed={},{}
+        for _,candidate in ipairs(matches) do
+            local row=candidate.row
+            local caller=u32(row,0x18)
+            if known_actors[caller] then
+                local source=entity(keep(pointer(keep(records+candidate.index*8,8)),24))
+                -- Remote copies have no authoritative cargo element here. A
+                -- host-owned map vehicle with no matching caller is excluded.
+                if source.resource==profile.transport_resource and source.owned then
+                    local cargo=u32(row,8)
+                    local key=context..'/delivery/'..source.identity
+                    local delivered=cargo~=0 and cargo~=0xffffffff
+                    assert(not delivered or not claimed[cargo],'ambiguous Supply FRV delivery')
+                    if delivered then claimed[cargo]=true end
+                    out[key]={key=key,caller=caller,peer=local_peer,cargo=delivered and cargo or nil}
+                    if delivered then ids[cargo]=true end
+                end
+            end
+        end
+        return out
+    end
+
     function self:capture(tracked)
         begin()
         local mission=global('mission')
         local row=keep(mission,0x44)
         local value,phase=u32(row,8),u32(row,64)
-        if value==0 or phase<1 or phase>7 then check(); return {active=false} end
+        if value==0 or phase<1 or phase>7 then
+            check();actor_context,actor_peer,actor_ids=nil,nil,{};return {active=false}
+        end
         local entities=global('entities')
         local players=global('player')
         local counts=keep(players+0x84,8)
         local player_count,local_count=u32(counts,0),u32(counts,4)
         assert(player_count<=4 and local_count<=1, 'unsupported player counts')
-        local local_entity
-        if local_count>0 then
-            local local_handle=u32(keep(players+0x3a8,20),0)
+        local collection,seater=seats('collection'),seats('seater')
+        local context=tostring(mission)..'/'..tostring(entities)..'/'..tostring(collection.base)..'/'..value
+        local local_entity,local_peer,local_slot
+        if player_count>0 then
+            local_peer=keep(global('user')+0xb398,8)
+            assert(local_peer~=string.rep('\0',8),'local session peer unavailable')
+            for slot=0,player_count-1 do
+                if keep(players+0x2c8+slot*0x38,8)==local_peer then
+                    assert(local_slot==nil,'duplicate local player record');local_slot=slot
+                end
+            end
+            assert(local_slot~=nil,'local caller absent from roster')
+        end
+        if local_count>0 and local_slot~=nil then
+            local local_handle=u32(keep(players+0x3a8+local_slot*0x20,20),0)
             if local_handle~=0x7fff then
                 local local_index=lookup(keep(entities+profile.entity_map,20),local_handle,1048576)
                 if local_index then
@@ -95,8 +151,14 @@ function M.new(memory, game, profile)
             end
         end
 
-        local collection,seater=seats('collection'),seats('seater')
-        local context=tostring(mission)..'/'..tostring(entities)..'/'..tostring(collection.base)..'/'..value
+        -- Keep only full generational avatar IDs proven local in this scene.
+        -- A call can finish delivering after its caller dies or respawns. Commit
+        -- this history only after ALL observation guards pass below.
+        local known_actors={}
+        if actor_context==context and actor_peer==local_peer then
+            for id in pairs(actor_ids) do known_actors[id]=true end
+        end
+        if local_entity then known_actors[local_entity.id]=true end
         local drivers, ids={},{}
         local avatars=global('avatar')
         local avatar_count=u32(keep(avatars+0x6c,4),0)
@@ -129,6 +191,7 @@ function M.new(memory, game, profile)
             assert(tracked_count<=32,'too many tracked supply vehicles')
             ids[id]=true
         end
+        local pending_deliveries=deliveries(context,ids,known_actors,local_peer)
         local vehicles={}
         for id in pairs(ids) do
             local index=lookup(collection.map,id,4096)
@@ -146,7 +209,8 @@ function M.new(memory, game, profile)
             end
         end
         check()
-        return {active=true,context=context,vehicles=vehicles,reads=reads}
+        actor_context,actor_peer,actor_ids=context,local_peer,known_actors
+        return {active=true,context=context,vehicles=vehicles,deliveries=pending_deliveries,reads=reads}
     end
 
     -- Freshly resolve the per-instance interaction, including after compaction.
